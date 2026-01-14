@@ -134,10 +134,10 @@
     <script>
         const SUPABASE_URL = "https://ikvnmkqvhsoubfmgxmbk.supabase.co"
         const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlrdm5ta3F2aHNvdWJmbWd4bWJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM4MjQ5MDgsImV4cCI6MjA3OTQwMDkwOH0.PsXozth0qYkx4_-iO3tByftBX-4Xti7AR9TxKQ7B4CA"
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
 
         async function fetchLeads() {
-            const { data, error } = await supabase.from('leads').select('*').order('created_at', { ascending: false })
+            const { data, error } = await supabaseClient.from('leads').select('*').order('created_at', { ascending: false })
             if (error) return console.error(error)
 
             const filtered = data.filter(l => l.email_valid && l.email_type === 'personal')
@@ -153,7 +153,7 @@
                 card.innerHTML = `
                     <div class="badge badge-personal"><i class="fas fa-user-tie"></i> LEAD PERSONAL</div>
                     <h3>${lead.business_name}</h3>
-                    <div class="stars">${'★'.repeat(Math.round(lead.rating || 0))}${'☆'.repeat(5-Math.round(lead.rating || 0))} <span>(${lead.rating || 'N/A'})</span></div>
+                    <div class="stars">${'★'.repeat(Math.round(lead.rating || 0))}${'☆'.repeat(5 - Math.round(lead.rating || 0))} <span>(${lead.rating || 'N/A'})</span></div>
                     <div style="font-size:0.8rem; opacity:0.7"><i class="fas fa-envelope"></i> ${lead.contact_email}</div>
 
                     <div class="thinking">

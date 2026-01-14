@@ -60,7 +60,8 @@ def enrich_leads(limit: int = 50):
                 page = requests.get(website, headers={'User-Agent': ua.random}, timeout=10)
                 page_text = BeautifulSoup(page.content, 'html.parser').get_text()
 
-            emails = set(re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', page_text))
+            # Refined Email Regex
+            emails = set(re.findall(r'[a-zA-Z0-9\._%+-]+@[a-zA-Z0-9\.-]+\.[a-zA-Z]{2,}', page_text))
             filtered_emails = [e for e in emails if not e.endswith(('.png', '.jpg', '.jpeg', '.gif', '.svg', '.js', '.css'))]
             for e in filtered_emails:
                 if classify_email(e) == "personal":

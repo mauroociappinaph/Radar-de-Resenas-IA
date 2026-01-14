@@ -57,10 +57,35 @@ def analyze_leads(limit: int = 50):
             completion = client.chat.completions.create(model=MODEL_NAME, messages=[{"role": "user", "content": prompt}])
             raw_response = completion.choices[0].message.content
 
-            thinking = re.search(r'<thinking>(.*?)</thinking>', raw_response, re.DOTALL).group(1).strip() if '<thinking>' in raw_response else ""
-            subject = re.search(r'<subject>(.*?)</subject>', raw_response, re.DOTALL).group(1).strip() if '<subject>' in raw_response else "Sin Asunto"
-            subject = re.sub(r'^(Asunto|Subject):\s*', '', subject, flags=re.IGNORECASE).strip()
-            email_draft = re.search(r'<email>(.*?)</email>', raw_response, re.DOTALL).group(1).strip() if '<email>' in raw_response else raw_response
+            # Robust extraction
+            thinking_match = re.search(r'<thinking>(.*?)</thinking>', raw_response, re.DOTALL)
+            thinking = thinking_match.group(1).strip() if thinking_match else ""
+
+            subject_match = re.search(r'<subject>(.*?)</subject>', raw_response, re.DOTALL)
+            if subject_match:
+                subject = subject_match.group(1).strip()
+            else:
+                subject_fallback = re.search(r'(?:Asunto|Subject|Subject\sLine):\s*(.*)', raw_response, re.IGNORECASE)
+                subject = subject_fallback.group(1).strip() if subject_fallback else "Consulta Estratégica"
+
+            subject = re.sub(r'^(Asunto|Subject|Subject\sLine):\s*', '', subject, flags=re.IGNORECASE).strip()
+
+            email_match = re.search(r'<email>(.*?)</email>', raw_response, re.DOTALL)
+            if email_match:
+                email_draft = email_match.group(1).strip()
+            else:
+                # Fallback: remove thinking and subject tags/content to get the likely email body
+                clean_body = raw_response
+                if thinking_match: clean_body = clean_body.replace(thinking_match.group(0), "") # Use group(0) to replace the full matched tag
+                if subject_match: clean_body = clean_body.replace(subject_match.group(0), "") # Use group(0) to replace the full matched tag
+
+                # Also try to remove the fallback subject line if it was found and not part of a tag
+                if not subject_match:
+                    subject_fallback_match = re.search(r'(?:Asunto|Subject|Subject\sLine):\s*(.*)', clean_body, re.IGNORECASE)
+                    if subject_fallback_match:
+                        clean_body = clean_body.replace(subject_fallback_match.group(0), "")
+
+                email_draft = clean_body.strip()
 
             supabase.table("leads").update({"status": "analyzed", "email_subject": subject, "email_draft": email_draft, "analysis_thinking": thinking}).eq("id", lead_id).execute()
             print(f"✅ Draft created for {name}")
