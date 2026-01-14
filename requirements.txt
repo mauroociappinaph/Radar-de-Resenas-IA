@@ -1,0 +1,8 @@
+exa-py
+supabase
+python-dotenv
+beautifulsoup4
+requests
+fake-useragent
+email-validator
+openai

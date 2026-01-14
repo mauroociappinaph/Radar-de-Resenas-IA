@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radar de Reseñas IA | Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/all.min.css">
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: rgba(30, 41, 59, 0.7);
+            --primary: #38bdf8;
+            --accent: #818cf8;
+            --text: #f1f5f9;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 2rem;
+            background-image: radial-gradient(circle at top right, #1e293b, #0f172a);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 3rem;
+        }
+
+        h1 {
+            font-weight: 300;
+            letter-spacing: -1px;
+            margin: 0;
+            background: linear-gradient(to right, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .card {
+            background: var(--card);
+            backdrop-filter: blur(12px);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 1.5rem;
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            border-color: var(--primary);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 99px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .badge-personal {
+            background: rgba(56, 189, 248, 0.2);
+            color: var(--primary);
+        }
+
+        .stars {
+            color: #fbbf24;
+            margin-bottom: 0.5rem;
+        }
+
+        .thinking {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            font-style: italic;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+            border-left: 3px solid var(--accent);
+        }
+
+        .draft-box {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .email-body {
+            font-size: 0.9rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            color: #cbd5e1;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 5rem;
+            font-size: 1.2rem;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Radar de Reseñas <span style="font-weight: 600;">IA</span></h1>
+            <div id="stats"></div>
+        </header>
+
+        <div id="loading" class="loading">Sincronizando con la red neuronal de leads...</div>
+        <div id="leads-grid" class="grid"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        const SUPABASE_URL = "https://ikvnmkqvhsoubfmgxmbk.supabase.co"
+        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlrdm5ta3F2aHNvdWJmbWd4bWJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM4MjQ5MDgsImV4cCI6MjA3OTQwMDkwOH0.PsXozth0qYkx4_-iO3tByftBX-4Xti7AR9TxKQ7B4CA"
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+
+        async function fetchLeads() {
+            const { data, error } = await supabase.from('leads').select('*').order('created_at', { ascending: false })
+            if (error) return console.error(error)
+
+            const filtered = data.filter(l => l.email_valid && l.email_type === 'personal')
+
+            const grid = document.getElementById('leads-grid')
+            const loading = document.getElementById('loading')
+            loading.style.display = 'none'
+            grid.innerHTML = ''
+
+            filtered.forEach(lead => {
+                const card = document.createElement('div')
+                card.className = 'card'
+                card.innerHTML = `
+                    <div class="badge badge-personal"><i class="fas fa-user-tie"></i> LEAD PERSONAL</div>
+                    <h3>${lead.business_name}</h3>
+                    <div class="stars">${'★'.repeat(Math.round(lead.rating || 0))}${'☆'.repeat(5-Math.round(lead.rating || 0))} <span>(${lead.rating || 'N/A'})</span></div>
+                    <div style="font-size:0.8rem; opacity:0.7"><i class="fas fa-envelope"></i> ${lead.contact_email}</div>
+
+                    <div class="thinking">
+                        <i class="fas fa-brain" style="color:var(--accent)"></i>
+                        ${lead.analysis_thinking || 'Analizando estrategia...'}
+                    </div>
+
+                    <div class="draft-box">
+                        <p style="font-size:0.8rem; font-weight:600; color:var(--primary); margin-bottom:0.5rem">
+                            <i class="fas fa-paper-plane"></i> ASUNTO: ${lead.email_subject || 'Pendiente'}
+                        </p>
+                        <div class="email-body">${lead.email_draft || 'Generando copia persuasiva...'}</div>
+                    </div>
+                `
+                grid.appendChild(card)
+            })
+        }
+        fetchLeads()
+    </script>
+</body>
+
+</html>
