@@ -15,9 +15,14 @@ jobs:
           python-version: '3.10'
       - run: |
           pip install -r requirements.txt
-          python3 main.py --limit 10 --niche "dentists" --city "Madrid"
+          python3 main.py --limit 10 --niche "gimnasios" --city "Valladolid"
         env:
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+          LANGCHAIN_TRACING_V2: "true"
+          LANGCHAIN_PROJECT: "Radar_IA_Audits"
+          PRIMARY_MODEL: "mistral/mistral-small-latest"

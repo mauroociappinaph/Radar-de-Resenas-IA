@@ -116,15 +116,137 @@
             font-size: 1.2rem;
             opacity: 0.5;
         }
+
+        /* NEW UI COMPONENTS */
+        .controls {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            align-items: end;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .input-group label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--primary);
+        }
+
+        input {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            padding: 0.6rem;
+            border-radius: 8px;
+            font-family: inherit;
+        }
+
+        button {
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+        }
+
+        button:hover {
+            opacity: 0.9;
+            transform: scale(1.02);
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.3);
+        }
+
+        button.secondary {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .stats-bar {
+            display: flex;
+            gap: 2rem;
+            margin-bottom: 2rem;
+            overflow-x: auto;
+            padding-bottom: 1rem;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .stat-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            opacity: 0.6;
+        }
+
+        .status-dot {
+            height: 8px;
+            width: 8px;
+            background-color: #22c55e;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+            box-shadow: 0 0 8px #22c55e;
+        }
     </style>
 </head>
 
 <body>
     <div class="container">
         <header>
-            <h1>Radar de Reseñas <span style="font-weight: 600;">IA</span></h1>
-            <div id="stats"></div>
+            <div>
+                <h1>Radar de Reseñas <span style="font-weight: 600;">IA</span></h1>
+                <p style="opacity: 0.6; font-size: 0.9rem; margin-top: 0.5rem">
+                    <span id="backend-status" class="status-dot"></span> Backend: <span id="backend-text">Offline</span>
+                </p>
+            </div>
+            <div id="stats-header" class="stats-bar"></div>
         </header>
+
+        <section class="controls">
+            <div class="input-group">
+                <label>Nicho</label>
+                <input type="text" id="niche" value="gimnasios">
+            </div>
+            <div class="input-group">
+                <label>Ciudad</label>
+                <input type="text" id="city" value="Mendoza, Argentina">
+            </div>
+            <div class="input-group">
+                <label>Límite</label>
+                <input type="number" id="limit" value="10">
+            </div>
+            <div class="input-group">
+                <label>API Key</label>
+                <input type="password" id="api-key" value="radar_secret_key_123">
+            </div>
+            <div style="display:flex; gap: 0.5rem">
+                <button onclick="runPipeline()"><i class="fas fa-play"></i> Run Pipeline</button>
+                <button class="secondary" onclick="dispatchEmails()"><i class="fas fa-paper-plane"></i>
+                    Dispatch</button>
+            </div>
+        </section>
 
         <div id="loading" class="loading">Sincronizando con la red neuronal de leads...</div>
         <div id="leads-grid" class="grid"></div>
@@ -136,11 +258,66 @@
         const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlrdm5ta3F2aHNvdWJmbWd4bWJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM4MjQ5MDgsImV4cCI6MjA3OTQwMDkwOH0.PsXozth0qYkx4_-iO3tByftBX-4Xti7AR9TxKQ7B4CA"
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
 
+        const API_BASE = "http://localhost:8000"
+
+        async function updateStats() {
+            try {
+                const res = await fetch(`${API_BASE}/stats`)
+                const stats = await res.json()
+                const header = document.getElementById('stats-header')
+                const statusDot = document.getElementById('backend-status')
+                const statusText = document.getElementById('backend-text')
+
+                statusDot.style.backgroundColor = "#22c55e"
+                statusDot.style.boxShadow = "0 0 8px #22c55e"
+                statusText.innerText = "Online"
+
+                header.innerHTML = `
+                    <div class="stat-item"><span class="stat-value">${stats.total}</span><span class="stat-label">Total</span></div>
+                    <div class="stat-item"><span class="stat-value">${stats.scouted}</span><span class="stat-label">Scouted</span></div>
+                    <div class="stat-item"><span class="stat-value">${stats.analyzed}</span><span class="stat-label">Ready</span></div>
+                    <div class="stat-item"><span class="stat-value">${stats.contacted}</span><span class="stat-label">Sent</span></div>
+                `
+            } catch (e) {
+                document.getElementById('backend-text').innerText = "Offline"
+                document.getElementById('backend-status').style.backgroundColor = "#ef4444"
+                document.getElementById('backend-status').style.boxShadow = "none"
+            }
+        }
+
+        async function runPipeline() {
+            const niche = document.getElementById('niche').value
+            const city = document.getElementById('city').value
+            const limit = document.getElementById('limit').value
+            const apiKey = document.getElementById('api-key').value
+
+            if (!confirm(`¿Iniciar búsqueda de ${niche} en ${city}?`)) return
+
+            const res = await fetch(`${API_BASE}/pipeline/run?niche=${niche}&city=${city}&limit=${limit}`, {
+                method: 'POST',
+                headers: { 'X-API-KEY': apiKey }
+            })
+            const data = await res.json()
+            alert(data.message || data.detail)
+        }
+
+        async function dispatchEmails() {
+            const apiKey = document.getElementById('api-key').value
+            if (!confirm("¿Enviar emails pendientes ahora?")) return
+
+            const res = await fetch(`${API_BASE}/pipeline/dispatch`, {
+                method: 'POST',
+                headers: { 'X-API-KEY': apiKey }
+            })
+            const data = await res.json()
+            alert(data.message || data.detail)
+        }
+
         async function fetchLeads() {
             const { data, error } = await supabaseClient.from('leads').select('*').order('created_at', { ascending: false })
             if (error) return console.error(error)
 
-            const filtered = data.filter(l => l.email_valid && l.email_type === 'personal')
+            const filtered = data.filter(l => (l.status === 'analyzed' || l.status === 'contacted') && l.email_valid && l.email_type === 'personal')
 
             const grid = document.getElementById('leads-grid')
             const loading = document.getElementById('loading')
@@ -158,7 +335,7 @@
 
                     <div class="thinking">
                         <i class="fas fa-brain" style="color:var(--accent)"></i>
-                        ${lead.analysis_thinking || 'Analizando estrategia...'}
+                        ${(lead.analysis_thinking || 'Analizando...').substring(0, 200)}...
                     </div>
 
                     <div class="draft-box">
@@ -171,7 +348,11 @@
                 grid.appendChild(card)
             })
         }
+
+        updateStats()
         fetchLeads()
+        setInterval(updateStats, 5000)
+        setInterval(fetchLeads, 10000)
     </script>
 </body>
 

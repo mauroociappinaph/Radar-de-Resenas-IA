@@ -20,10 +20,16 @@ ua = UserAgent()
 
 def classify_email(email: str) -> str:
     if not email: return "unknown"
-    generic_prefixes = ['info', 'contact', 'contacto', 'hello', 'hola', 'admin', 'sales', 'support', 'office', 'recepcion', 'citas', 'reservas', 'team']
+    generic_prefixes = [
+        'info', 'contact', 'contacto', 'hello', 'hola', 'admin', 'sales', 'support', 'office',
+        'recepcion', 'citas', 'reservas', 'team', 'ventas', 'atencion', 'soporte', 'groupbookings',
+        'gerencia', 'comercial', 'ayuda', 'marketing', 'press', 'hr', 'jobs', 'careers',
+        'klantenservice', 'affiliate', 'customer', 'serviciocliente', 'atencionalcliente', 'servicedesk',
+        'management', 'hq', 'feedback', 'donations', 'privacy', 'legal'
+    ]
     prefix = email.split('@')[0].lower()
     prefix_clean = re.sub(r'\d+', '', prefix)
-    if prefix_clean in generic_prefixes: return "generic"
+    if any(gp == prefix_clean for gp in generic_prefixes): return "generic"
     return "personal"
 
 def fetch_review_context(business_name: str, city: str) -> str:
