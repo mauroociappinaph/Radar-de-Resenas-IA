@@ -1,5 +1,6 @@
 import os
-import requests
+import asyncio
+import aiohttp
 from bs4 import BeautifulSoup
 from exa_py import Exa
 from supabase import create_client, Client
@@ -32,7 +33,19 @@ def classify_email(email: str) -> str:
     if any(gp == prefix_clean for gp in generic_prefixes): return "generic"
     return "personal"
 
-def fetch_review_context(business_name: str, city: str) -> str:
+async def fetch_webpage(url: str) -> str:
+    """Fetch webpage content asynchronously."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers={'User-Agent': ua.random}, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                response.raise_for_status()
+                html = await response.text()
+                return BeautifulSoup(html, 'html.parser').get_text()
+    except Exception as e:
+        print(f"   ⚠️ Could not fetch webpage {url}: {e}")
+        return ""
+
+async def fetch_review_context(business_name: str, city: str) -> str:
     print(f"   🔍 Fetching Contextual Insights for {business_name}...")
     try:
         query = f"customer reviews complaints and praises for '{business_name}' in {city}"
@@ -46,62 +59,72 @@ def fetch_review_context(business_name: str, city: str) -> str:
         print(f"   ⚠️ Could not fetch review context: {e}")
         return "Context fetch failed."
 
-def enrich_leads(limit: int = 50):
-    print(f"🕵️‍♂️ Starting enrichment process - Limit: {limit}...")
+async def process_lead(lead: dict) -> None:
+    """Process a single lead asynchronously."""
+    lead_id, name, website, city = lead.get("id"), lead.get("business_name"), lead.get("website_url"), lead.get("city")
+    print(f"🔥 Analyzing: {website}...")
+    email = None
+    source_url = website
+    try:
+        search_response = exa.search_and_contents(f"site:{website.split('//')[-1].split('/')[0]} contact page 'email'", num_results=1, text=True)
+        if search_response.results:
+            result = search_response.results[0]
+            source_url, page_text = result.url, result.text
+        else:
+            page_text = await fetch_webpage(website)
+
+        # Refined Email Regex
+        emails = set(re.findall(r'[a-zA-Z0-9\._%+-]+@[a-zA-Z0-9\.-]+\.[a-zA-Z]{2,}', page_text))
+        filtered_emails = [e for e in emails if not e.endswith(('.png', '.jpg', '.jpeg', '.gif', '.svg', '.js', '.css'))]
+        for e in filtered_emails:
+            if classify_email(e) == "personal":
+                email = e
+                break
+        if not email and filtered_emails: email = filtered_emails[0]
+
+        if not email:
+            domain = website.split('//')[-1].split('/')[0].replace("www.", "")
+            for alias in ["info", "contact", "admin"]:
+                guessed = f"{alias}@{domain}"
+                try:
+                    validate_email(guessed, check_deliverability=True)
+                    email = guessed
+                    break
+                except: continue
+    except Exception as e: print(f"   ❌ Enrichment failed: {e}")
+
+    review_context = await fetch_review_context(name, city)
+    email_valid = False
+    if email:
+        try:
+            v = validate_email(email, check_deliverability=True)
+            email, email_valid = v["email"], True
+        except: email_valid = False
+
+    supabase.table("leads").update({
+        "status": "enriched",
+        "contact_email": email,
+        "email_type": classify_email(email),
+        "email_valid": email_valid,
+        "review_context": review_context
+    }).eq("id", lead_id).execute()
+    print(f"✅ Enriched {name}")
+
+async def enrich_leads(limit: int = 50, max_concurrency: int = 5):
+    print(f"🕵️‍♂️ Starting enrichment process - Limit: {limit}, Max concurrency: {max_concurrency}...")
     response = supabase.table("leads").select("*").eq("status", "scouted").limit(limit).execute()
     leads = response.data
     if not leads: return
 
-    for lead in leads:
-        lead_id, name, website, city = lead.get("id"), lead.get("business_name"), lead.get("website_url"), lead.get("city")
-        print(f"🔥 Analyzing: {website}...")
-        email = None
-        source_url = website
-        try:
-            search_response = exa.search_and_contents(f"site:{website.split('//')[-1].split('/')[0]} contact page 'email'", num_results=1, text=True)
-            if search_response.results:
-                result = search_response.results[0]
-                source_url, page_text = result.url, result.text
-            else:
-                page = requests.get(website, headers={'User-Agent': ua.random}, timeout=10)
-                page_text = BeautifulSoup(page.content, 'html.parser').get_text()
+    # Create semaphore for rate limiting
+    semaphore = asyncio.Semaphore(max_concurrency)
 
-            # Refined Email Regex
-            emails = set(re.findall(r'[a-zA-Z0-9\._%+-]+@[a-zA-Z0-9\.-]+\.[a-zA-Z]{2,}', page_text))
-            filtered_emails = [e for e in emails if not e.endswith(('.png', '.jpg', '.jpeg', '.gif', '.svg', '.js', '.css'))]
-            for e in filtered_emails:
-                if classify_email(e) == "personal":
-                    email = e
-                    break
-            if not email and filtered_emails: email = filtered_emails[0]
+    async def process_with_semaphore(lead):
+        async with semaphore:
+            await process_lead(lead)
 
-            if not email:
-                domain = website.split('//')[-1].split('/')[0].replace("www.", "")
-                for alias in ["info", "contact", "admin"]:
-                    guessed = f"{alias}@{domain}"
-                    try:
-                        validate_email(guessed, check_deliverability=True)
-                        email = guessed
-                        break
-                    except: continue
-        except Exception as e: print(f"   ❌ Enrichment failed: {e}")
-
-        review_context = fetch_review_context(name, city)
-        email_valid = False
-        if email:
-            try:
-                v = validate_email(email, check_deliverability=True)
-                email, email_valid = v["email"], True
-            except: email_valid = False
-
-        supabase.table("leads").update({
-            "status": "enriched",
-            "contact_email": email,
-            "email_type": classify_email(email),
-            "email_valid": email_valid,
-            "review_context": review_context
-        }).eq("id", lead_id).execute()
-        print(f"✅ Enriched {name}")
+    # Process leads concurrently
+    await asyncio.gather(*[process_with_semaphore(lead) for lead in leads])
 
 if __name__ == "__main__":
-    enrich_leads()
+    asyncio.run(enrich_leads())
