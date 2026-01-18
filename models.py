@@ -16,6 +16,11 @@ class LeadModel(BaseModel):
     email_draft: Optional[str] = None
     analysis_thinking: Optional[str] = None
     review_context: Optional[str] = None
+    sentiment_score: Optional[float] = Field(None, ge=-1, le=1)
+    sentiment_label: Optional[str] = None
+    sentiment_confidence: Optional[float] = Field(None, ge=0, le=1)
+    key_emotions: Optional[List[str]] = None
+    cluster_id: Optional[int] = Field(None, ge=0)
 
     @validator('business_name')
     def name_must_not_be_placeholder(cls, v):

@@ -275,8 +275,10 @@
                 header.innerHTML = `
                     <div class="stat-item"><span class="stat-value">${stats.total}</span><span class="stat-label">Total</span></div>
                     <div class="stat-item"><span class="stat-value">${stats.scouted}</span><span class="stat-label">Scouted</span></div>
-                    <div class="stat-item"><span class="stat-value">${stats.analyzed}</span><span class="stat-label">Ready</span></div>
+                    <div class="stat-item"><span class="stat-value">${stats.enriched}</span><span class="stat-label">Enriched</span></div>
+                    <div class="stat-item"><span class="stat-value">${stats.analyzed}</span><span class="stat-label">AI Ready</span></div>
                     <div class="stat-item"><span class="stat-value">${stats.contacted}</span><span class="stat-label">Sent</span></div>
+                    <div class="stat-item"><span class="stat-value">${stats.skipped + stats.failed}</span><span class="stat-label">Filtered</span></div>
                 `
             } catch (e) {
                 document.getElementById('backend-text').innerText = "Offline"
@@ -317,33 +319,79 @@
             const { data, error } = await supabaseClient.from('leads').select('*').order('created_at', { ascending: false })
             if (error) return console.error(error)
 
-            const filtered = data.filter(l => (l.status === 'analyzed' || l.status === 'contacted') && l.email_valid && l.email_type === 'personal')
+            // Filter to only show leads with email drafts (analyzed/contacted)
+            const filteredData = data.filter(lead => lead.email_draft && lead.email_draft.trim() !== '')
 
             const grid = document.getElementById('leads-grid')
             const loading = document.getElementById('loading')
             loading.style.display = 'none'
             grid.innerHTML = ''
 
-            filtered.forEach(lead => {
+            filteredData.forEach(lead => {
+                const statusColors = {
+                    'scouted': '#fbbf24',
+                    'enriched': '#3b82f6',
+                    'analyzed': '#10b981',
+                    'contacted': '#8b5cf6',
+                    'skipped': '#6b7280',
+                    'failed': '#ef4444'
+                }
+
+                const sentimentColors = {
+                    'positive': '#10b981',
+                    'neutral': '#fbbf24',
+                    'negative': '#ef4444'
+                }
+
                 const card = document.createElement('div')
                 card.className = 'card'
                 card.innerHTML = `
-                    <div class="badge badge-personal"><i class="fas fa-user-tie"></i> LEAD PERSONAL</div>
+                    <div class="badge" style="background: rgba(${statusColors[lead.status] || '#6b7280'}, 0.2); color: ${statusColors[lead.status] || '#6b7280'}">
+                        <i class="fas fa-circle"></i> ${lead.status.toUpperCase()}
+                    </div>
                     <h3>${lead.business_name}</h3>
                     <div class="stars">${'★'.repeat(Math.round(lead.rating || 0))}${'☆'.repeat(5 - Math.round(lead.rating || 0))} <span>(${lead.rating || 'N/A'})</span></div>
-                    <div style="font-size:0.8rem; opacity:0.7"><i class="fas fa-envelope"></i> ${lead.contact_email}</div>
+                    <div style="font-size:0.8rem; opacity:0.7"><i class="fas fa-map-marker-alt"></i> ${lead.city} | <i class="fas fa-tag"></i> ${lead.niche}</div>
+                    ${lead.contact_email ? `<div style="font-size:0.8rem; opacity:0.7"><i class="fas fa-envelope"></i> ${lead.contact_email} (${lead.email_type || 'unknown'})</div>` : ''}
 
+                    ${lead.sentiment_label ? `
+                    <div style="margin: 0.5rem 0; font-size: 0.8rem;">
+                        <i class="fas fa-smile" style="color: ${sentimentColors[lead.sentiment_label] || '#6b7280'}"></i>
+                        Sentimiento: <strong style="color: ${sentimentColors[lead.sentiment_label] || '#6b7280'}">${lead.sentiment_label}</strong>
+                        (${(lead.sentiment_score || 0).toFixed(2)}) | Confianza: ${(lead.sentiment_confidence || 0).toFixed(2)}
+                        ${lead.key_emotions && lead.key_emotions.length > 0 ? `<br><small>Emociones: ${lead.key_emotions.join(', ')}</small>` : ''}
+                    </div>
+                    ` : ''}
+
+                    ${lead.cluster_id !== null && lead.cluster_id !== undefined ? `
+                    <div style="margin: 0.5rem 0; font-size: 0.8rem;">
+                        <i class="fas fa-users" style="color: var(--accent)"></i>
+                        Cluster: <strong style="color: var(--accent)">${lead.cluster_id}</strong>
+                    </div>
+                    ` : ''}
+
+                    ${lead.review_context ? `
+                    <div class="thinking">
+                        <i class="fas fa-comment" style="color:var(--accent)"></i>
+                        ${(lead.review_context || 'Sin reseñas').substring(0, 150)}...
+                    </div>
+                    ` : ''}
+
+                    ${lead.analysis_thinking ? `
                     <div class="thinking">
                         <i class="fas fa-brain" style="color:var(--accent)"></i>
                         ${(lead.analysis_thinking || 'Analizando...').substring(0, 200)}...
                     </div>
+                    ` : ''}
 
+                    ${(lead.status === 'analyzed' || lead.status === 'contacted') && lead.email_draft ? `
                     <div class="draft-box">
                         <p style="font-size:0.8rem; font-weight:600; color:var(--primary); margin-bottom:0.5rem">
                             <i class="fas fa-paper-plane"></i> ASUNTO: ${lead.email_subject || 'Pendiente'}
                         </p>
                         <div class="email-body">${lead.email_draft || 'Generando copia persuasiva...'}</div>
                     </div>
+                    ` : ''}
                 `
                 grid.appendChild(card)
             })

@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 import re
 from fake_useragent import UserAgent
 from email_validator import validate_email, EmailNotValidError
+from sentiment_analyzer import get_sentiment_analyzer
 
 load_dotenv()
 
@@ -94,6 +95,11 @@ async def process_lead(lead: dict) -> None:
     except Exception as e: print(f"   ❌ Enrichment failed: {e}")
 
     review_context = await fetch_review_context(name, city)
+
+    # Analyze sentiment of review context
+    sentiment_analyzer = get_sentiment_analyzer(use_bert=False)  # Use VADER for speed
+    sentiment_result = sentiment_analyzer.analyze_sentiment(review_context)
+
     email_valid = False
     if email:
         try:
@@ -106,7 +112,11 @@ async def process_lead(lead: dict) -> None:
         "contact_email": email,
         "email_type": classify_email(email),
         "email_valid": email_valid,
-        "review_context": review_context
+        "review_context": review_context,
+        "sentiment_score": sentiment_result['sentiment_score'],
+        "sentiment_label": sentiment_result['sentiment_label'],
+        "sentiment_confidence": sentiment_result['confidence'],
+        "key_emotions": sentiment_result['key_emotions']
     }).eq("id", lead_id).execute()
     print(f"✅ Enriched {name}")
 

@@ -21,6 +21,55 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 exa = Exa(api_key=EXA_API_KEY)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+def clean_business_name(raw_title: str) -> str:
+    """
+    Clean business name from SEO titles and unwanted suffixes.
+
+    Examples:
+    "Fitness Gym Doris, Murcia, Spain - Reviews, Ratings, Tips ..." -> "Fitness Gym Doris"
+    "Gyms in Lima - TrainAway helps you Find a great gym in Lima" -> "TrainAway"
+    "THE 10 BEST Restaurants in Buenos Aires (Updated January 2026)" -> "Best Restaurants Buenos Aires"
+    """
+    if not raw_title:
+        return "Unknown Business"
+
+    # Remove common SEO suffixes and patterns
+    patterns_to_remove = [
+        r'\s*\(Updated\s+[A-Za-z]+\s+\d{4}\)',  # (Updated January 2026)
+        r'\s*-\s*Reviews,?\s*Ratings?,?\s*Tips?.*$',
+        r'\s*-\s*Wanderlog.*$',
+        r'\s*&\s*Places\s*to\s*Eat.*$',
+        r'\s*\|\s*.*$',
+        r'\s*–\s*.*$',
+        r'\s*:\s*.*$',
+        r'\s*,\s*[A-Za-z\s]+-.*$'
+    ]
+
+    cleaned = raw_title.strip()
+
+    for pattern in patterns_to_remove:
+        cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
+
+    # Handle "THE X BEST" patterns
+    the_best_match = re.search(r'THE\s+(\d+)\s+BEST\s+(.+)', cleaned, re.IGNORECASE)
+    if the_best_match:
+        count = the_best_match.group(1)
+        category = the_best_match.group(2).strip()
+        cleaned = f"Top {count} {category}"
+
+    # If the result is too short or generic, try to extract a proper business name
+    if len(cleaned.strip()) < 3 or cleaned.lower() in ['home', 'index', 'main', 'welcome']:
+        # Try to find a capitalized name at the beginning
+        words = raw_title.split()
+        potential_names = []
+        for word in words[:5]:  # Check first 5 words
+            if word.istitle() and len(word) > 2:
+                potential_names.append(word)
+        if potential_names:
+            cleaned = ' '.join(potential_names[:3])  # Take up to 3 capitalized words
+
+    return cleaned.strip() or "Unknown Business"
+
 def scout_leads(niche, city, limit=10):
     print(f"🚀 Scouting for {niche} in {city} (finding {limit} NEW leads)...")
 
@@ -44,7 +93,7 @@ def scout_leads(niche, city, limit=10):
         for result in results.results:
             if found_count >= limit: break
 
-            business_name = result.title
+            business_name = clean_business_name(result.title)
             website_url = result.url
 
             # 1. URL Deduplication (exact)

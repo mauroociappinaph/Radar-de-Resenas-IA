@@ -68,18 +68,43 @@ def get_rating_status(stars):
     except: return "Visibility"
 
 @traceable
-def run_sequential_audit(name, key_issue, review_context):
+def run_sequential_audit(name, key_issue, review_context, sentiment_score=0.0):
     """
     Simula sequential thinking usando múltiples llamadas a IA para análisis más profundo.
+    Adapta la estrategia según el sentimiento de las reseñas.
     """
 
-    # THOUGHT 1: Análisis inicial del problema y contexto
-    prompt_1 = f"""
-    Eres un consultor experimentado en marketing digital. Lee estas reseñas sobre '{name}': {review_context[:500]}
+    # THOUGHT 1: Análisis inicial adaptado al sentimiento
+    if sentiment_score > 0.1:
+        # Reseñas positivas: enfoque en oportunidades de crecimiento
+        prompt_1 = f"""
+        Eres un consultor experimentado en marketing digital. Lee estas reseñas POSITIVAS sobre '{name}': {review_context[:500]}
 
-    TAREA: Identifica el PROBLEMA PRINCIPAL que más se repite en las reseñas. ¿Qué es lo que más molesta a los clientes?
-    Sé directo y específico. Este es el PASO 1 de 4.
-    """
+        TAREA: Identifica las FORTALEZAS PRINCIPALES que más se destacan. ¿Qué valoran más los clientes?
+        ¿Cómo podemos AMPLIFICAR estos aspectos positivos para atraer más clientes?
+
+        Sé específico y enfócate en oportunidades de crecimiento. Este es el PASO 1 de 4.
+        """
+    elif sentiment_score < -0.1:
+        # Reseñas negativas: enfoque en problemas reales
+        prompt_1 = f"""
+        Eres un consultor experimentado en marketing digital. Lee estas reseñas con PROBLEMAS sobre '{name}': {review_context[:500]}
+
+        TAREA: Identifica el PROBLEMA PRINCIPAL que más se repite. ¿Qué duele más a los clientes?
+        ¿Cómo podemos ayudarles a SOLUCIONAR estos problemas específicos?
+
+        Sé directo y específico. Este es el PASO 1 de 4.
+        """
+    else:
+        # Reseñas neutrales: enfoque en visibilidad
+        prompt_1 = f"""
+        Eres un consultor experimentado en marketing digital. Lee estas reseñas NEUTRALES sobre '{name}': {review_context[:500]}
+
+        TAREA: ¿Por qué las reseñas son neutras? ¿Falta visibilidad o engagement?
+        ¿Cómo podemos aumentar la presencia online y generar más interacciones?
+
+        Identifica oportunidades de mejora. Este es el PASO 1 de 4.
+        """
 
     response_1 = litellm.completion(
         model=MODEL_NAME,
@@ -178,13 +203,22 @@ PASO 4 - Redacción: {thought_4}
     subject = subject_match.group(1).strip() if subject_match else f"Solución IA para {name}"
 
     # Extraer greeting y main content
-    email_text = re.sub(r'Subject:.*?\n', '', thought_4, flags=re.IGNORECASE).strip()
+    email_text = re.sub(r'Subject:.*?\n', '', thought_4, flags=re.IGNORECASE)
     email_text = re.sub(r'Mauro Ciappina \| Desarrollador IA.*', '', email_text, flags=re.IGNORECASE).strip()
+    # Limpiar líneas vacías al inicio
+    email_text = email_text.lstrip('\n').strip()
 
     # Separar greeting del contenido principal
     lines = email_text.split('\n', 1)
     greeting = lines[0] if lines else f"Hola equipo de {name},"
     main_content = lines[1] if len(lines) > 1 else email_text
+
+    # Estructurar párrafos: convertir saltos de línea dobles en párrafos
+    if main_content:
+        # Dividir por párrafos (doble salto de línea)
+        paragraphs = main_content.split('\n\n')
+        # Convertir cada párrafo en <p> tag
+        main_content = '\n'.join([f'<p>{p.strip()}</p>' for p in paragraphs if p.strip()])
 
     # Generar HTML
     html_email = render_html_email(greeting, main_content)
@@ -197,11 +231,11 @@ PASO 4 - Redacción: {thought_4}
     return final_response
 
 @traceable
-def run_ai_audit(name, key_issue, review_context):
+def run_ai_audit(name, key_issue, review_context, sentiment_score=0.0):
     """
     Wrapper para mantener compatibilidad - usa sequential thinking por defecto
     """
-    return run_sequential_audit(name, key_issue, review_context)
+    return run_sequential_audit(name, key_issue, review_context, sentiment_score)
 
 def analyze_leads(limit: int = 50):
     print(f"🧠 Starting analysis process - Limit: {limit}...")
@@ -216,6 +250,7 @@ def analyze_leads(limit: int = 50):
         lead_id, name, rating = lead.get("id"), lead.get("business_name"), lead.get("rating")
         review_context = lead.get("review_context", "No direct reviews found.")
         contact_email = lead.get("contact_email")
+        sentiment_score = lead.get("sentiment_score", 0.0)
 
         # Internal re-check of email quality
         email_type = classify_email(contact_email)
@@ -231,11 +266,11 @@ def analyze_leads(limit: int = 50):
             supabase.table("leads").update({"status": "skipped", "analysis_thinking": "Skipped: Generic email filter"}).eq("id", lead_id).execute()
             continue
 
-        print(f"🤖 Auditing: {name}...")
+        print(f"🤖 Auditing: {name} (Sentiment: {sentiment_score:.2f})...")
         key_issue = get_rating_status(rating)
 
         try:
-            raw_response = run_ai_audit(name, key_issue, review_context)
+            raw_response = run_sequential_audit(name, key_issue, review_context, sentiment_score)
             print(f"DEBUG RAW RESPONSE:\n{raw_response}\n---")
 
             # Extraction - Improved regex to be more forgiving
@@ -252,7 +287,7 @@ def analyze_leads(limit: int = 50):
 
             # Clean subject from potential quotes or labels
             subject = re.sub(r'^(?:Asunto|Subject|Subject\sLine):\s*', '', subject, flags=re.IGNORECASE).strip()
-            subject = subject.strip('"').strip("'")
+            subject = subject.strip('"').strip("'").strip('*')
 
             email_match = re.search(r'<email>(.*?)</email>', raw_response, re.DOTALL | re.IGNORECASE)
             email_draft = email_match.group(1).strip() if email_match else raw_response
